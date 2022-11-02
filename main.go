@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -91,8 +91,9 @@ func main() {
 	}
 
 	if dbv == nil || v.IsAfter(dbv) {
-		// write the version directly to db.txt
+		// write the version directly to version.txt
 		writeToFile(f, v)
+		// TODO: Send slack message
 		return
 	}
 
@@ -109,18 +110,22 @@ func getDBVersion(f *os.File) (*Version, error) {
 }
 
 func getVersion() (*Version, error) {
-	c := "curl https://omahaproxy.appspot.com/win"
-	args := strings.Split(c, " ")
-
-	cmd := exec.Command(args[0], args[1:]...)
-	out, err := cmd.CombinedOutput()
+	res, err := http.Get("https://omahaproxy.appspot.com/win")
 	if err != nil {
 		return nil, err
 	}
-	o := string(out)
-	ll := strings.Split(o, "\n")
-	l := ll[len(ll)-1]
-	return fromString(l)
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code: %d", res.StatusCode)
+	}
+
+	d, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	o := string(d)
+	return fromString(o)
 }
 
 func writeToFile(f *os.File, v *Version) error {
